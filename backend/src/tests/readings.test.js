@@ -27,21 +27,21 @@ describe('Readings API - create & validation', () => {
     const { agent } = await createUser();
     const res = await agent.post('/api/readings').send({ ...base, glucose_value: v });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Value must be between 40 and 600 mg/dl.');
+    expect(res.body.message).toBe('Value must be a whole number between 40 and 600 mg/dl.');
   });
 
   test('rejects value above 600', async () => {
     const { agent } = await createUser();
     const res = await agent.post('/api/readings').send({ ...base, glucose_value: 601 });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Value must be between 40 and 600 mg/dl.');
+    expect(res.body.message).toBe('Value must be a whole number between 40 and 600 mg/dl.');
   });
 
   test.each([[120.5], ['120.5'], ['abc']])('rejects non-integer value %p', async (v) => {
     const { agent } = await createUser();
     const res = await agent.post('/api/readings').send({ ...base, glucose_value: v });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Value must be between 40 and 600 mg/dl.');
+    expect(res.body.message).toBe('Value must be a whole number between 40 and 600 mg/dl.');
   });
 
   test('accepts boundary values 40 and 600', async () => {

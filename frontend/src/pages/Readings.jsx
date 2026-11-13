@@ -11,7 +11,7 @@ import ConfirmModal from '../components/common/ConfirmModal';
 import { ErrorBlock, LoadingBlock } from '../components/common/StateBlock';
 import Button from '../components/common/Button';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 
 export default function Readings() {
   const [month, setMonth] = useState(currentMonthLocal());

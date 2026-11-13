@@ -43,9 +43,12 @@ module.exports = {
   isProduction,
   port: Number(process.env.PORT) || 5000,
   databaseUrl,
+  redisHost: process.env.REDIS_HOST || 'localhost',
+  redisPort: Number(process.env.REDIS_PORT) || 6379,
+  redisPassword: process.env.REDIS_PASSWORD || '',
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
-  frontendUrls: (process.env.FRONTEND_URL || 'http://localhost:5173')
+  frontendUrls: (process.env.FRONTEND_URL || 'http://localhost:5177')
     .split(',')
     .map((u) => u.trim().replace(/\/$/, ''))
     .filter(Boolean),

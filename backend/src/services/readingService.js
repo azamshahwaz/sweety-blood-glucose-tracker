@@ -2,8 +2,9 @@ const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const { lastOfMonth } = require('../utils/dates');
 const { TIME_SLOTS, SLOT_LABELS, SLOT_ORDER_SQL, MAX_READINGS_PER_DAY } = require('../utils/constants');
+const { withInterpretation } = require('./glucoseInterpretation');
 
-const COLUMNS = 'id, reading_date, time_slot, glucose_value, created_at, updated_at';
+const COLUMNS = 'id, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes, created_at, updated_at';
 const MAX_MSG = `You can add only ${MAX_READINGS_PER_DAY} readings per day.`;
 const article = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
 const dupMsg = (slot) => `You already have ${article(SLOT_LABELS[slot])} ${SLOT_LABELS[slot]} reading for this date.`;
@@ -28,17 +29,17 @@ function mapUniqueViolation(err, slot) {
   return err;
 }
 
-async function create(userId, { reading_date, time_slot, glucose_value }) {
+async function create(userId, { reading_date, time_slot, glucose_value, fasting_confirmed = null, meal_timing_minutes = null }) {
   try {
     return await db.withTransaction(async (client) => {
       await lockUser(client, userId);
       await assertSlotAvailable(client, userId, reading_date, time_slot, null);
       const { rows } = await client.query(
-        `INSERT INTO glucose_readings (user_id, reading_date, time_slot, glucose_value)
-         VALUES ($1, $2, $3, $4) RETURNING ${COLUMNS}`,
-        [userId, reading_date, time_slot, glucose_value]
+        `INSERT INTO glucose_readings (user_id, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${COLUMNS}`,
+        [userId, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes]
       );
-      return rows[0];
+      return withInterpretation(rows[0]);
     });
   } catch (err) {
     throw mapUniqueViolation(err, time_slot);
@@ -48,10 +49,10 @@ async function create(userId, { reading_date, time_slot, glucose_value }) {
 async function getById(userId, id) {
   const { rows } = await db.query(`SELECT ${COLUMNS} FROM glucose_readings WHERE id = $1 AND user_id = $2`, [id, userId]);
   if (!rows[0]) throw new AppError(404, 'Reading not found.');
-  return rows[0];
+  return withInterpretation(rows[0]);
 }
 
-async function update(userId, id, { reading_date, time_slot, glucose_value }) {
+async function update(userId, id, { reading_date, time_slot, glucose_value, fasting_confirmed = null, meal_timing_minutes = null }) {
   try {
     return await db.withTransaction(async (client) => {
       await lockUser(client, userId);
@@ -59,11 +60,12 @@ async function update(userId, id, { reading_date, time_slot, glucose_value }) {
       if (!existing.rows[0]) throw new AppError(404, 'Reading not found.');
       await assertSlotAvailable(client, userId, reading_date, time_slot, id);
       const { rows } = await client.query(
-        `UPDATE glucose_readings SET reading_date = $3, time_slot = $4, glucose_value = $5
+        `UPDATE glucose_readings SET reading_date = $3, time_slot = $4, glucose_value = $5,
+          fasting_confirmed = $6, meal_timing_minutes = $7
          WHERE id = $1 AND user_id = $2 RETURNING ${COLUMNS}`,
-        [id, userId, reading_date, time_slot, glucose_value]
+        [id, userId, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes]
       );
-      return rows[0];
+      return withInterpretation(rows[0]);
     });
   } catch (err) {
     throw mapUniqueViolation(err, time_slot);
@@ -115,7 +117,7 @@ async function list(userId, { month, date, search, page, limit }) {
     ),
   ]);
   const total = countRes.rows[0].total;
-  return { readings: rowsRes.rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
+  return { readings: rowsRes.rows.map(withInterpretation), pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
 }
 
 module.exports = { create, getById, update, remove, list };

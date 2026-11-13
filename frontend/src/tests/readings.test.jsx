@@ -14,7 +14,7 @@ import { validateReading } from '../utils/validation';
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() }, Toaster: () => null }));
 vi.mock('../api', () => ({
   authApi: { me: vi.fn() },
-  readingsApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
+  readingsApi: { list: vi.fn(), interpret: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
 const listOf = (readings) => ({ data: { readings, pagination: { page: 1, limit: 10, total: readings.length, totalPages: 1 } } });
@@ -23,6 +23,7 @@ const reading = (over = {}) => ({ id: 'r1', reading_date: '2025-06-10', time_slo
 beforeEach(() => {
   vi.clearAllMocks();
   readingsApi.list.mockResolvedValue(listOf([]));
+  readingsApi.interpret.mockResolvedValue({ data: { interpretation: { status: 'TIMING_REQUIRED', label: 'Timing required', color: 'neutral', explanation: 'Confirm timing.', disclaimer: 'General reference values.' } } });
   authApi.me.mockRejectedValue(apiError('no', 401));
 });
 
@@ -54,7 +55,7 @@ describe('ReadingFormModal', () => {
     setup();
     await userEvent.type(screen.getByLabelText(/glucose value/i), value);
     await submit();
-    expect(screen.getAllByText('Value must be between 40 and 600 mg/dl.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Value must be a whole number between 40 and 600 mg/dl.').length).toBeGreaterThan(0);
     expect(readingsApi.create).not.toHaveBeenCalled();
   });
 
@@ -85,9 +86,35 @@ describe('ReadingFormModal', () => {
     await userEvent.type(screen.getByLabelText(/glucose value/i), '110');
     await submit();
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(readingsApi.create).toHaveBeenCalledWith({ reading_date: todayLocal(), time_slot: 'AFTER_BREAKFAST', glucose_value: 110 });
+    expect(readingsApi.create).toHaveBeenCalledWith({ reading_date: todayLocal(), time_slot: 'AFTER_BREAKFAST', glucose_value: 110, fasting_confirmed: null, meal_timing_minutes: null });
     expect(toast.success).toHaveBeenCalledWith('Reading added successfully');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  test('shows the backend timing-required interpretation while entering a reading', async () => {
+    setup();
+    await userEvent.type(screen.getByLabelText(/glucose value/i), '110');
+    expect(await screen.findByText('Timing required')).toBeInTheDocument();
+    expect(screen.getByText('Confirm timing.')).toBeInTheDocument();
+    expect(readingsApi.interpret).toHaveBeenCalledWith({
+      glucose_value: 110,
+      time_slot: 'MORNING_FASTING',
+      fasting_confirmed: false,
+      meal_timing_minutes: null,
+    });
+  });
+
+  test('submits confirmed fasting context with the reading', async () => {
+    readingsApi.create.mockResolvedValue({ data: {} });
+    setup();
+    await userEvent.click(screen.getByLabelText(/confirm at least 8 hours/i));
+    await userEvent.type(screen.getByLabelText(/glucose value/i), '90');
+    await submit();
+    await waitFor(() => expect(readingsApi.create).toHaveBeenCalledWith(expect.objectContaining({
+      glucose_value: 90,
+      fasting_confirmed: true,
+      meal_timing_minutes: null,
+    })));
   });
 
   test('shows a loading state and blocks duplicate submissions', async () => {
@@ -124,7 +151,7 @@ describe('ReadingFormModal', () => {
     await userEvent.type(screen.getByLabelText(/glucose value/i), '140');
     await userEvent.click(screen.getByRole('button', { name: 'Update' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(readingsApi.update).toHaveBeenCalledWith('r1', { reading_date: '2025-06-10', time_slot: 'AFTER_LUNCH', glucose_value: 140 });
+    expect(readingsApi.update).toHaveBeenCalledWith('r1', { reading_date: '2025-06-10', time_slot: 'AFTER_LUNCH', glucose_value: 140, fasting_confirmed: null, meal_timing_minutes: null });
   });
 });
 

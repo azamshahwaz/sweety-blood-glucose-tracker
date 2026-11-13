@@ -36,7 +36,7 @@ export function validateReading({ date, slot, value }, otherSlots = []) {
   const raw = String(value ?? '').trim();
   if (raw === '') errors.value = 'Please enter a glucose value.';
   else if (!/^\d+$/.test(raw) || Number(raw) < GLUCOSE_MIN || Number(raw) > GLUCOSE_MAX) {
-    errors.value = `Value must be between ${GLUCOSE_MIN} and ${GLUCOSE_MAX} mg/dl.`;
+    errors.value = `Value must be a whole number between ${GLUCOSE_MIN} and ${GLUCOSE_MAX} mg/dl.`;
   }
 
   if (!errors.date) {

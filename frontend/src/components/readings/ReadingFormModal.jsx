@@ -9,15 +9,17 @@ import { getErrorMessage, getFieldErrors } from '../../api/client';
 import { GLUCOSE_MAX, GLUCOSE_MIN, SLOTS } from '../../utils/constants';
 import { todayLocal } from '../../utils/date';
 import { validateReading } from '../../utils/validation';
+import Interpretation from './Interpretation';
 
 // Reusable Add / Edit modal. Pass `reading` to edit, omit it to add.
 export default function ReadingFormModal({ open, reading, onClose, onSaved, defaultDate }) {
   const isEdit = !!reading;
-  const [form, setForm] = useState({ date: todayLocal(), slot: SLOTS[0].value, value: '' });
+  const [form, setForm] = useState({ date: todayLocal(), slot: SLOTS[0].value, value: '', fasting_confirmed: false, meal_timing_minutes: '' });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [dayReadings, setDayReadings] = useState([]);
+  const [interpretation, setInterpretation] = useState(null);
 
   // Reset the form each time the modal opens.
   useEffect(() => {
@@ -25,12 +27,27 @@ export default function ReadingFormModal({ open, reading, onClose, onSaved, defa
     setErrors({});
     setFormError('');
     setSubmitting(false);
+    setInterpretation(reading?.interpretation || null);
     setForm(
       reading
-        ? { date: reading.reading_date, slot: reading.time_slot, value: String(reading.glucose_value) }
-        : { date: defaultDate || todayLocal(), slot: SLOTS[0].value, value: '' }
+        ? { date: reading.reading_date, slot: reading.time_slot, value: String(reading.glucose_value), fasting_confirmed: reading.fasting_confirmed === true, meal_timing_minutes: reading.meal_timing_minutes ?? '' }
+        : { date: defaultDate || todayLocal(), slot: SLOTS[0].value, value: '', fasting_confirmed: false, meal_timing_minutes: '' }
     );
   }, [open, reading, defaultDate]);
+
+  useEffect(() => {
+    if (!open || !/^\d+$/.test(form.value) || Number(form.value) < GLUCOSE_MIN || Number(form.value) > GLUCOSE_MAX) {
+      setInterpretation(null);
+      return undefined;
+    }
+    let active = true;
+    const timer = setTimeout(() => readingsApi.interpret({
+      glucose_value: Number(form.value), time_slot: form.slot,
+      fasting_confirmed: form.slot === 'MORNING_FASTING' ? form.fasting_confirmed : null,
+      meal_timing_minutes: form.slot === 'MORNING_FASTING' || form.meal_timing_minutes === '' ? null : Number(form.meal_timing_minutes),
+    }).then((res) => active && setInterpretation(res.data.interpretation)).catch(() => active && setInterpretation(null)), 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [open, form.value, form.slot, form.fasting_confirmed, form.meal_timing_minutes]);
 
   // Load the readings already recorded on the selected date (powers the slot overview).
   useEffect(() => {
@@ -65,7 +82,11 @@ export default function ReadingFormModal({ open, reading, onClose, onSaved, defa
     if (Object.keys(found).length) return;
 
     setSubmitting(true);
-    const payload = { reading_date: form.date, time_slot: form.slot, glucose_value: Number(form.value) };
+    const payload = {
+      reading_date: form.date, time_slot: form.slot, glucose_value: Number(form.value),
+      fasting_confirmed: form.slot === 'MORNING_FASTING' ? form.fasting_confirmed : null,
+      meal_timing_minutes: form.slot === 'MORNING_FASTING' || form.meal_timing_minutes === '' ? null : Number(form.meal_timing_minutes),
+    };
     try {
       if (isEdit) await readingsApi.update(reading.id, payload);
       else await readingsApi.create(payload);
@@ -74,7 +95,7 @@ export default function ReadingFormModal({ open, reading, onClose, onSaved, defa
       onClose();
     } catch (err) {
       const server = getFieldErrors(err);
-      setErrors({ date: server.reading_date, slot: server.time_slot, value: server.glucose_value });
+      setErrors({ date: server.reading_date, slot: server.time_slot, value: server.glucose_value, meal_timing_minutes: server.meal_timing_minutes });
       setFormError(getErrorMessage(err));
       toast.error(getErrorMessage(err));
     } finally {
@@ -99,6 +120,18 @@ export default function ReadingFormModal({ open, reading, onClose, onSaved, defa
           </select>
         </FormField>
 
+        {form.slot === 'MORNING_FASTING' ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="fasting_confirmed" checked={form.fasting_confirmed} onChange={(e) => setForm((f) => ({ ...f, fasting_confirmed: e.target.checked }))} className="checkbox checkbox-sm checkbox-primary" />
+            <span>Confirm at least 8 hours without caloric intake</span>
+          </label>
+        ) : (
+          <FormField id="meal_timing_minutes" label="Minutes after meal started" error={errors.meal_timing_minutes}>
+            <input id="meal_timing_minutes" name="meal_timing_minutes" type="number" min="0" max="1440" step="1" value={form.meal_timing_minutes} onChange={onChange} className={`field-input ${errors.meal_timing_minutes ? 'input-error' : ''}`} placeholder="Enter to confirm timing" aria-invalid={!!errors.meal_timing_minutes} />
+            <p className="mt-1 text-xs text-muted">Post-meal reference values apply only at exactly 120 minutes.</p>
+          </FormField>
+        )}
+
         <div aria-label="Slots recorded for this date">
           <p className="mb-1.5 text-xs font-medium text-muted">Slots for this date</p>
           <div className="grid grid-cols-2 gap-2">
@@ -121,6 +154,8 @@ export default function ReadingFormModal({ open, reading, onClose, onSaved, defa
           </div>
           {!errors.value && <p className="mt-1 text-xs text-muted">Value must be between {GLUCOSE_MIN} and {GLUCOSE_MAX} mg/dl.</p>}
         </FormField>
+
+        {interpretation && <Interpretation value={interpretation} />}
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>

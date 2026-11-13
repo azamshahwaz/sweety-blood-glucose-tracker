@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS glucose_readings (
   reading_date  DATE NOT NULL,
   time_slot     VARCHAR(30) NOT NULL,
   glucose_value INTEGER NOT NULL,
+  fasting_confirmed BOOLEAN,
+  meal_timing_minutes INTEGER CHECK (meal_timing_minutes IS NULL OR meal_timing_minutes BETWEEN 0 AND 1440),
   created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMP NOT NULL DEFAULT NOW(),
   CONSTRAINT glucose_value_range CHECK (glucose_value BETWEEN 40 AND 600),
@@ -22,6 +24,16 @@ CREATE TABLE IF NOT EXISTS glucose_readings (
   -- this also guarantees at most four readings per user per date at the database level.
   CONSTRAINT one_reading_per_slot_per_day UNIQUE (user_id, reading_date, time_slot)
 );
+
+CREATE TABLE IF NOT EXISTS reminder_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reminder_date DATE NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT one_reminder_per_user_per_day UNIQUE (user_id, reminder_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminder_logs_reminder_date ON reminder_logs (reminder_date);
 
 CREATE INDEX IF NOT EXISTS idx_glucose_readings_user_id ON glucose_readings (user_id);
 CREATE INDEX IF NOT EXISTS idx_glucose_readings_reading_date ON glucose_readings (reading_date);

@@ -11,6 +11,7 @@ export const authApi = {
 
 export const readingsApi = {
   list: (params) => unwrap(client.get('/readings', { params })),
+  interpret: (payload) => unwrap(client.post('/readings/interpretation', payload)),
   create: (payload) => unwrap(client.post('/readings', payload)),
   update: (id, payload) => unwrap(client.put(`/readings/${id}`, payload)),
   remove: (id) => unwrap(client.delete(`/readings/${id}`)),

@@ -5,7 +5,7 @@ const { todayInTimezone } = require('../utils/dates');
 const { dateString, monthString } = require('./common');
 
 const REQUIRED_MSG = 'Please enter a glucose value.';
-const RANGE_MSG = `Value must be between ${GLUCOSE_MIN} and ${GLUCOSE_MAX} mg/dl.`;
+const RANGE_MSG = `Value must be a whole number between ${GLUCOSE_MIN} and ${GLUCOSE_MAX} mg/dl.`;
 
 // Accepts whole numbers (or numeric strings). Rejects decimals, NaN, out-of-range values.
 const glucoseValue = z
@@ -28,6 +28,21 @@ const readingSchema = z.object({
   reading_date: dateString('date').refine((d) => d <= todayInTimezone(env.timeZone), 'Date cannot be in the future.'),
   time_slot: z.enum(TIME_SLOTS, { errorMap: () => ({ message: 'Please select a valid time slot.' }) }),
   glucose_value: glucoseValue,
+  fasting_confirmed: z.boolean().optional().nullable(),
+  meal_timing_minutes: z.union([z.number().int(), z.string().regex(/^\d+$/).transform(Number)]).optional().nullable(),
+}).superRefine((reading, ctx) => {
+  if (reading.fasting_confirmed !== undefined && reading.fasting_confirmed !== null && typeof reading.fasting_confirmed !== 'boolean') {
+    ctx.addIssue({ code: 'custom', path: ['fasting_confirmed'], message: 'Fasting confirmation must be true or false.' });
+  }
+  if (reading.meal_timing_minutes !== undefined && reading.meal_timing_minutes !== null && (reading.meal_timing_minutes < 0 || reading.meal_timing_minutes > 1440)) {
+    ctx.addIssue({ code: 'custom', path: ['meal_timing_minutes'], message: 'Meal timing must be between 0 and 1440 minutes.' });
+  }
+  if (reading.time_slot === 'MORNING_FASTING' && reading.meal_timing_minutes != null) {
+    ctx.addIssue({ code: 'custom', path: ['meal_timing_minutes'], message: 'Meal timing is only used for post-meal readings.' });
+  }
+  if (reading.time_slot !== 'MORNING_FASTING' && reading.fasting_confirmed != null) {
+    ctx.addIssue({ code: 'custom', path: ['fasting_confirmed'], message: 'Fasting confirmation is only used for morning fasting readings.' });
+  }
 });
 
 const listQuerySchema = z.object({

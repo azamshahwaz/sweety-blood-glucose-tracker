@@ -3,7 +3,7 @@ const app = require('../app');
 const { pool } = require('../config/db');
 const { migrate } = require('../../migrations/run');
 
-const ORIGIN = 'http://localhost:5173';
+const ORIGIN = 'http://localhost:5177';
 let counter = 0;
 
 // Creates the schema in the TEST database only (env.js refuses non-"_test" databases).

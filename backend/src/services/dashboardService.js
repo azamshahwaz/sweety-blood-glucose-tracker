@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { getStats } = require('./reportService');
 const { firstOfMonth, lastOfMonth } = require('../utils/dates');
 const { TIME_SLOTS, SLOT_ORDER_SQL, MAX_READINGS_PER_DAY } = require('../utils/constants');
+const { withInterpretation } = require('./glucoseInterpretation');
 
 async function summary(userId, date, month) {
   const ym = month || date.slice(0, 7);
@@ -9,7 +10,7 @@ async function summary(userId, date, month) {
     getStats(userId, firstOfMonth(ym), lastOfMonth(ym)),
     db.query('SELECT COUNT(*)::int AS count FROM glucose_readings WHERE user_id = $1 AND reading_date = $2', [userId, date]),
     db.query(
-      `SELECT id, reading_date, time_slot, glucose_value FROM glucose_readings
+      `SELECT id, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes FROM glucose_readings
         WHERE user_id = $1 ORDER BY reading_date DESC, ${SLOT_ORDER_SQL} DESC LIMIT 5`,
       [userId]
     ),
@@ -19,7 +20,7 @@ async function summary(userId, date, month) {
     month: ym,
     today: { count: todayRes.rows[0].count, max: MAX_READINGS_PER_DAY },
     stats,
-    recent: recentRes.rows,
+    recent: recentRes.rows.map(withInterpretation),
   };
 }
 

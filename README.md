@@ -1,7 +1,7 @@
 # Sweety – Blood Glucose Tracker
 
 A full-stack web app to log blood glucose readings (up to 4 per day), view them in a clean dashboard, and generate daily, month-to-date and previous-month reports.
-Sweety is a **tracking tool only** – it gives no diagnosis, treatment advice or "safe/dangerous" labels.
+Sweety is a **tracking tool only**. Its glucose reference interpretations are general indicators, not diagnoses or personalized treatment guidance.
 
 ## Features
 - Register / login with JWT stored in an **HTTP-only cookie**; logout clears it
@@ -10,6 +10,7 @@ Sweety is a **tracking tool only** – it gives no diagnosis, treatment advice o
 - Max 4 readings/day enforced in a DB transaction with a per-user row lock (plus `UNIQUE(user_id, reading_date, time_slot)`)
 - Reports (computed in PostgreSQL): Daily, Month-to-Date, Previous Month – highest / lowest / average (1 decimal) / total
 - Dashboard: summary cards, glucose trend, readings by time slot, daily reading distribution, recent readings, quick actions
+- Reference interpretation in add/edit, reading history, dashboard recent readings and daily reports. Historical readings without timing remain available and display "Timing required".
 - Responsive UI (sidebar + mobile drawer), loading / error / empty states, toasts, Tailwind + DaisyUI theme **sweety-health**
 
 ## Tech stack
@@ -41,6 +42,7 @@ Flow: `routes → validate → controller → service → PostgreSQL`; errors go
 users(id UUID PK, name VARCHAR(100), email VARCHAR(255) UNIQUE, password_hash TEXT, created_at, updated_at)
 glucose_readings(id UUID PK, user_id UUID FK→users ON DELETE CASCADE, reading_date DATE, time_slot VARCHAR(30),
   glucose_value INTEGER CHECK 40..600, created_at, updated_at,
+  fasting_confirmed BOOLEAN NULL, meal_timing_minutes INTEGER NULL,
   CHECK time_slot IN (MORNING_FASTING, AFTER_BREAKFAST, AFTER_LUNCH, AFTER_DINNER),
   UNIQUE(user_id, reading_date, time_slot))
 -- indexes: user_id, reading_date, (user_id, reading_date); triggers keep updated_at current
@@ -48,7 +50,7 @@ glucose_readings(id UUID PK, user_id UUID FK→users ON DELETE CASCADE, reading_
 Because only 4 slots exist and each may appear once per day, the database itself can never hold more than 4 readings per user per day.
 
 ## Prerequisites
-Node.js 18+ and PostgreSQL 14+ (needs `gen_random_uuid()`).
+Node.js 18+ and PostgreSQL 14+ (needs `gen_random_uuid()`). Docker Compose is available as an alternative and starts PostgreSQL, Redis, backend, reminder worker and frontend.
 
 ## PostgreSQL setup
 ```sql
@@ -65,6 +67,8 @@ cp frontend/.env.example frontend/.env
 Backend `.env` keys: `PORT, NODE_ENV, DATABASE_URL, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL, COOKIE_SECURE` plus optional `APP_TIMEZONE` (default `Asia/Kolkata`, used to decide what "today" is for the future-date rule) and `BCRYPT_ROUNDS` (default 12). Frontend: `VITE_API_URL`.
 Never commit real `.env` files (they are git-ignored).
 
+Docker Compose reads the root `.env`; the backend loads `backend/.env` for local runs and `backend/.env.test` only under `NODE_ENV=test`. Frontend Vite reads `frontend/.env`. Test database names must end in `_test` and must be separate from development databases. The checked-in examples use placeholders; configure local credentials privately before starting services.
+
 ## Install, migrate, seed, run
 ```bash
 # backend
@@ -75,8 +79,33 @@ npm run dev          # http://localhost:5000
 
 # frontend (new terminal)
 cd frontend && npm install
-npm run dev          # http://localhost:5173
+npm run dev          # http://localhost:5177
 ```
+
+## Redis and BullMQ reminders
+The backend worker uses BullMQ and Redis to schedule one job each day at **8:00 PM Asia/Kolkata**. Each run counts readings for the current IST calendar date and inserts a `reminder_logs` row for each user with fewer than four readings. The `(user_id, reminder_date)` database constraint and `ON CONFLICT DO NOTHING` make repeated jobs safe. Jobs retry up to five times with exponential backoff. This feature only writes database logs; it does not send notifications.
+
+For a local non-Docker run, start Redis, set `REDIS_HOST`, `REDIS_PORT` and optionally `REDIS_PASSWORD` in `backend/.env`, then run `npm run worker` from `backend` in its own terminal alongside the API. Run `npm run migrate` before starting either process.
+
+## Docker Compose
+Copy `.env.example` to `.env` in the repository root and replace the PostgreSQL password and JWT secret. Then:
+
+```bash
+docker compose up --build -d       # start all services
+docker compose ps                  # inspect health
+docker compose logs -f backend worker
+docker compose down                # stop services; persistent data is retained
+```
+
+The backend container applies migrations before starting the API. PostgreSQL and Redis use persistent named volumes. The worker is a separate process. For a demo account, run `docker compose exec backend npm run seed` after startup. Compose credentials come from environment variables in `.env`; do not commit that file. The frontend is available at `http://localhost:5177` by default.
+
+## Environment variables
+- `DATABASE_URL` (local backend) or `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (Compose): PostgreSQL connection settings.
+- `JWT_SECRET`, `JWT_EXPIRES_IN`: signing secret and token lifetime.
+- `FRONTEND_URL`, `COOKIE_SECURE`, `PORT`, `NODE_ENV`: API origin/security/runtime settings.
+- `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`: BullMQ connection settings. Compose sets the internal Redis hostname automatically.
+- `APP_TIMEZONE`: date handling for the existing future-date validation. Reminder dates always use `Asia/Kolkata`.
+- `VITE_API_URL`: frontend API base URL for a local Vite run; Compose builds it as `/api` and proxies through Nginx.
 
 ## Demo credentials
 | Email | Password |
@@ -98,6 +127,7 @@ Protected endpoints need the `sweety_token` cookie set by login. Status codes: 2
 | `POST /api/readings` | `{reading_date,time_slot,glucose_value}` |
 | `GET /api/readings` | query: `month=YYYY-MM`, `date=YYYY-MM-DD`, `search`, `page`, `limit` (newest first) |
 | `GET/PUT/DELETE /api/readings/:id` | own readings only |
+| `POST /api/readings/interpretation` | authenticated preview using `{glucose_value,time_slot,fasting_confirmed?,meal_timing_minutes?}` |
 | `GET /api/reports/daily?date=` | selected day |
 | `GET /api/reports/month-to-date?date=` | 1st of month → date (inclusive) |
 | `GET /api/reports/monthly?date=` | whole previous calendar month |
@@ -106,11 +136,11 @@ Protected endpoints need the `sweety_token` cookie set by login. Status codes: 2
 
 ```bash
 # login (Origin header is required in browsers anyway; shown for completeness)
-curl -c jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:5173" \
+curl -c jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:5177" \
   -d '{"email":"demo@sweety.app","password":"SweetyDemo@123"}' http://localhost:5000/api/auth/login
 
 # add a reading
-curl -b jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:5173" \
+curl -b jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:5177" \
   -d '{"reading_date":"2026-10-15","time_slot":"AFTER_LUNCH","glucose_value":128}' http://localhost:5000/api/readings
 ```
 ```json
@@ -125,16 +155,24 @@ bcrypt hashing · user identity only from the verified JWT · parameterized SQL 
 
 ## Tests
 ```bash
-cd backend  && npm test            # 54 tests
+cd backend  && npm test
 cd backend  && npm run test:coverage
-cd frontend && npm test            # 35 tests
+cd frontend && npm test
 cd frontend && npm run test:coverage
+cd frontend && npm run build
+cd backend  && npm run migrate:test
+cd backend  && npm run worker
 ```
-**Test-database safety:** backend tests load `.env.test` only, read `TEST_DATABASE_URL`, and the app refuses to start under `NODE_ENV=test` unless the database name ends with `_test` and differs from `DATABASE_URL`. Cleanup truncates only the two app tables after re-checking `current_database()`. Tests run serially (`--runInBand`) on that one database.
+**Test-database safety:** backend tests load `.env.test` only, read `TEST_DATABASE_URL`, and the app refuses to start under `NODE_ENV=test` unless the database name ends with `_test` and differs from `DATABASE_URL`. Cleanup truncates app tables only after re-checking `current_database()`. Tests run serially (`--runInBand`) on that one database.
 
-Latest results (run in the build environment, PostgreSQL 16):
-- Backend: 3 suites, **54 passed**; coverage 96.5% statements / 78.2% branches / 98.1% lines
-- Frontend: 3 files, **35 passed**; coverage 61.8% statements overall – auth, reading form, readings table/page, validation and date utils are well covered; Dashboard, Reports, chart and layout components are not unit-tested (they were checked end-to-end in a real browser, see Notes)
+Reminder integration tests cover 0, 1, 2, 3 and 4 readings, multiple users, duplicate processing, the IST midnight boundary and Redis scheduling failures. These run with the backend suite and therefore require a configured PostgreSQL `_test` database; Redis itself is not needed for the scheduler failure unit test.
+
+## Notes
+- Reminder logs are audit records for users who have fewer than four readings at the scheduled job run. The job does not deliver reminders through any channel.
+- The reminder date is determined when the job executes in Asia/Kolkata. Redis downtime can delay the run; BullMQ retries failed processing, and the unique constraint prevents duplicate log rows after recovery.
+- Compose applies migrations automatically in the backend container. Local setup requires running `npm run migrate` explicitly.
+- Migration `003_glucose_timing.sql` adds nullable context columns and preserves existing records. Reading API results include a backend-computed `interpretation`; daily report and dashboard recent readings use the same classifier.
+- Future improvements could include monitoring/alerting for prolonged Redis outages and a retention policy for old reminder logs.
 
 ## Assumptions
 - "Today" for the future-date rule uses `APP_TIMEZONE` (default Asia/Kolkata); the frontend uses the browser's local date.
@@ -143,13 +181,21 @@ Latest results (run in the build environment, PostgreSQL 16):
 - "Daily Reading Distribution" = number of readings logged per day.
 - In the edit form the time slot is locked (as in the mockup); the date and value can change, and the backend re-checks duplicates and the daily limit.
 - Reports/dashboard only count readings of the logged-in user.
+- Fasting values apply to non-pregnant adults without diagnosed diabetes and require at least 8 hours without calories. Post-meal values require exactly 120 minutes from meal start; otherwise the status is `TIMING_REQUIRED`.
+
+## Reference ranges and medical disclaimer
+
+For confirmed fasting readings: **<54 mg/dL** Critical Low; **54–69** Low; **70–99** Normal / Healthy; **100–125** Moderate / Elevated; **126–249** High; **≥250** Very High / Urgent Review. For confirmed 2-hour post-meal readings: **<54** Critical Low; **54–69** Low; **70–139** Normal / Healthy; **140–179** Moderate / Elevated; **180–249** High; **≥250** Very High / Urgent Review. Missing or unconfirmed timing returns `TIMING_REQUIRED`.
+
+> These are general reference values, not a medical diagnosis. Your personal glucose targets may differ. Consult your healthcare professional.
+
+A single reading cannot diagnose diabetes or prediabetes. Fasting values of 126 mg/dL or above need appropriate clinical confirmation. Personal targets differ for people with diabetes and other conditions; do not use these categories to adjust medication or insulin. Follow a clinician's plan for low readings and contact a healthcare professional promptly for very high readings. Seek emergency care for severe symptoms, confusion, seizure, loss of consciousness, vomiting or trouble breathing.
 
 ## Known limitations
-- No password reset, "remember me", profile page or notifications (not part of the required scope).
-- No Docker setup (optional bonus, not implemented).
+- No password reset, "remember me", profile page or notification delivery.
 - Frontend unit tests do not cover the Dashboard/Reports pages or chart components.
 - JWT is not revocable server-side; logout only clears the cookie.
 - Google Fonts are loaded from a CDN (falls back to system fonts offline).
 
 ## Future improvements
-Docker Compose, refresh tokens/revocation, CSV/PDF export, Playwright E2E tests, more frontend tests for charts/reports, code-splitting the bundle, i18n.
+Refresh tokens/revocation, CSV/PDF export, Playwright E2E tests, more frontend tests for charts/reports, code-splitting the bundle, i18n.

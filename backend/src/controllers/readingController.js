@@ -1,5 +1,8 @@
 const readingService = require('../services/readingService');
 const { sendSuccess } = require('../utils/response');
+const { classify } = require('../services/glucoseInterpretation');
+
+const interpret = async (req, res) => sendSuccess(res, { interpretation: classify(req.validated.body) }, 'OK');
 
 const create = async (req, res) => {
   const reading = await readingService.create(req.user.id, req.validated.body);
@@ -17,4 +20,4 @@ const remove = async (req, res) => {
   sendSuccess(res, {}, 'Reading deleted successfully');
 };
 
-module.exports = { create, list, getOne, update, remove };
+module.exports = { create, list, getOne, update, remove, interpret };
