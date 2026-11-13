@@ -15,7 +15,7 @@ async function requireAuth(req, _res, next) {
     } catch {
       throw new AppError(401, 'Your session is invalid or has expired. Please log in again.');
     }
-    const { rows } = await db.query('SELECT id, name, email, created_at FROM users WHERE id = $1', [payload.sub]);
+    const { rows } = await db.query('SELECT id, name, email, role, created_at FROM users WHERE id = $1', [payload.sub]);
     if (!rows[0]) throw new AppError(401, 'Your session is invalid or has expired. Please log in again.');
     req.user = rows[0];
     next();
@@ -24,4 +24,11 @@ async function requireAuth(req, _res, next) {
   }
 }
 
-module.exports = { requireAuth };
+function requireRole(...roles) {
+  return (req, _res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) return next(new AppError(403, 'You do not have permission to access this resource.'));
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole };

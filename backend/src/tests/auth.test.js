@@ -5,7 +5,7 @@ beforeAll(setupDb);
 beforeEach(resetDb);
 afterAll(closeDb);
 
-const validBody = { name: 'Asha Rao', email: 'asha@example.com', password: 'StrongPass1', confirmPassword: 'StrongPass1' };
+const validBody = { name: 'Asha Rao', email: 'asha@example.com', password: 'StrongPass1!', confirmPassword: 'StrongPass1!' };
 
 describe('Auth API', () => {
   test('registers a new user and never returns the password hash', async () => {
@@ -14,7 +14,7 @@ describe('Auth API', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.user).toMatchObject({ name: 'Asha Rao', email: 'asha@example.com' });
     expect(res.body.data.user.password_hash).toBeUndefined();
-    expect(JSON.stringify(res.body)).not.toContain('StrongPass1');
+    expect(JSON.stringify(res.body)).not.toContain('StrongPass1!');
   });
 
   test('rejects duplicate email registration', async () => {
@@ -27,9 +27,9 @@ describe('Auth API', () => {
   test('stores the password as a bcrypt hash', async () => {
     await newAgent().post('/api/auth/register').send(validBody).expect(201);
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE email = $1', ['asha@example.com']);
-    expect(rows[0].password_hash).not.toBe('StrongPass1');
+    expect(rows[0].password_hash).not.toBe('StrongPass1!');
     expect(rows[0].password_hash).toMatch(/^\$2[aby]\$/);
-    expect(await bcrypt.compare('StrongPass1', rows[0].password_hash)).toBe(true);
+    expect(await bcrypt.compare('StrongPass1!', rows[0].password_hash)).toBe(true);
   });
 
   test.each([
@@ -46,7 +46,7 @@ describe('Auth API', () => {
 
   test('logs in with correct credentials and sets an HTTP-only cookie', async () => {
     await newAgent().post('/api/auth/register').send(validBody).expect(201);
-    const res = await newAgent().post('/api/auth/login').send({ email: 'asha@example.com', password: 'StrongPass1' });
+    const res = await newAgent().post('/api/auth/login').send({ email: 'asha@example.com', password: 'StrongPass1!' });
     expect(res.status).toBe(200);
     const cookie = res.headers['set-cookie'][0];
     expect(cookie).toMatch(/sweety_token=/);

@@ -3,7 +3,7 @@ import SlotBadge from '../common/SlotBadge';
 import EmptyState from '../common/EmptyState';
 import { IconButton } from '../common/Button';
 import { formatDate } from '../../utils/date';
-import Interpretation from './Interpretation';
+import GlucoseInterpretation from './GlucoseInterpretation';
 
 export default function ReadingsTable({ readings, onEdit, onDelete, emptyAction, emptyDescription }) {
   if (!readings.length) {
@@ -27,7 +27,7 @@ export default function ReadingsTable({ readings, onEdit, onDelete, emptyAction,
               <td className="whitespace-nowrap font-medium">{formatDate(r.reading_date)}</td>
               <td><SlotBadge slot={r.time_slot} /></td>
               <td className="font-semibold">{r.glucose_value}</td>
-              <td className="min-w-56"><Interpretation value={r.interpretation} compact /></td>
+              <td><GlucoseInterpretation reading={r} compact /></td>
               <td>
                 <div className="flex justify-end gap-1">
                   {onEdit && <IconButton label="Edit reading" icon={Pencil} onClick={() => onEdit(r)} />}

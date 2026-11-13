@@ -27,3 +27,18 @@ export const dashboardApi = {
   summary: (date, month) => unwrap(client.get('/dashboard/summary', { params: { date, month } })),
   trends: (month) => unwrap(client.get('/dashboard/trends', { params: { month } })),
 };
+
+export const doctorApi = {
+  patients: (params = {}) => unwrap(client.get('/doctor/patients', { params })),
+  readings: (id, params = {}) => unwrap(client.get(`/doctor/patients/${id}/readings`, { params })),
+  daily: (id, date) => unwrap(client.get(`/doctor/patients/${id}/reports/daily`, { params: { date } })),
+  monthToDate: (id, date) => unwrap(client.get(`/doctor/patients/${id}/reports/month-to-date`, { params: { date } })),
+  monthly: (id, date) => unwrap(client.get(`/doctor/patients/${id}/reports/monthly`, { params: { date } })),
+};
+
+export const adminApi = {
+  accounts: () => unwrap(client.get('/admin/accounts')),
+  createDoctor: (payload) => unwrap(client.post('/admin/doctors', payload)),
+  assign: (doctorId, patientId) => unwrap(client.post('/admin/assignments', { doctorId, patientId })),
+  removeAssignment: (id) => unwrap(client.delete(`/admin/assignments/${id}`)),
+};

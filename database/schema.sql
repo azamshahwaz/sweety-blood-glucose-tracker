@@ -1,9 +1,11 @@
--- Sweety initial schema
+-- Reference schema for a fresh Sweety database. Prefer the tracked migrations in backend/migrations.
 CREATE TABLE IF NOT EXISTS users (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name          VARCHAR(100) NOT NULL,
   email         VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  role          VARCHAR(20) NOT NULL DEFAULT 'PATIENT' CHECK (role IN ('PATIENT','DOCTOR','ADMIN')),
+  report_cache_version BIGINT NOT NULL DEFAULT 0,
   created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -38,6 +40,18 @@ CREATE INDEX IF NOT EXISTS idx_reminder_logs_reminder_date ON reminder_logs (rem
 CREATE INDEX IF NOT EXISTS idx_glucose_readings_user_id ON glucose_readings (user_id);
 CREATE INDEX IF NOT EXISTS idx_glucose_readings_reading_date ON glucose_readings (reading_date);
 CREATE INDEX IF NOT EXISTS idx_glucose_readings_user_date ON glucose_readings (user_id, reading_date);
+
+CREATE TABLE IF NOT EXISTS doctor_patient_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  doctor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assigned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT doctor_patient_not_self CHECK (doctor_id <> patient_id),
+  CONSTRAINT doctor_patient_unique UNIQUE (doctor_id, patient_id)
+);
+CREATE INDEX IF NOT EXISTS idx_assignments_doctor ON doctor_patient_assignments (doctor_id, assigned_at DESC);
+CREATE INDEX IF NOT EXISTS idx_assignments_patient ON doctor_patient_assignments (patient_id);
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
 BEGIN

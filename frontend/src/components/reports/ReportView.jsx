@@ -18,7 +18,7 @@ import {
 } from '../dashboard/Charts';
 
 import { formatDate } from '../../utils/date';
-import Interpretation from '../readings/Interpretation';
+import GlucoseInterpretation from '../readings/GlucoseInterpretation';
 
 // Safe value formatter
 const show = (v) =>
@@ -175,7 +175,7 @@ export default function ReportView({
                         {r.glucose_value}
                       </td>
                       <td className="min-w-56">
-                        <Interpretation value={r.interpretation} compact />
+                        <GlucoseInterpretation reading={r} compact />
                       </td>
 
                     </tr>

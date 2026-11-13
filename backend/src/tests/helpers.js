@@ -2,6 +2,7 @@ const request = require('supertest');
 const app = require('../app');
 const { pool } = require('../config/db');
 const { migrate } = require('../../migrations/run');
+const { closeRedis } = require('../services/redisClient');
 
 const ORIGIN = 'http://localhost:5177';
 let counter = 0;
@@ -19,6 +20,7 @@ async function resetDb() {
 }
 
 async function closeDb() {
+  await closeRedis();
   await pool.end();
 }
 
@@ -28,7 +30,7 @@ const newAgent = () => request.agent(app).set('Origin', ORIGIN);
 async function createUser(overrides = {}) {
   counter += 1;
   const creds = {
-    name: `Test User ${counter}`,
+    name: 'Test User',
     email: `user${counter}@test.app`,
     password: 'Password@123',
     ...overrides,

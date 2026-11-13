@@ -14,8 +14,6 @@ router.use(requireAuth);
 router.post('/interpretation', validate(z.object({
   glucose_value: z.coerce.number().int().min(40).max(600),
   time_slot: z.enum(TIME_SLOTS),
-  fasting_confirmed: z.boolean().optional().nullable(),
-  meal_timing_minutes: z.coerce.number().int().min(0).max(1440).optional().nullable(),
 })), asyncHandler(ctrl.interpret));
 router.post('/', validate(readingSchema), asyncHandler(ctrl.create));
 router.get('/', validate(listQuerySchema, 'query'), asyncHandler(ctrl.list));

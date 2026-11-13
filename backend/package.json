@@ -10,6 +10,7 @@
     "migrate": "node migrations/run.js",
     "migrate:test": "cross-env NODE_ENV=test node migrations/run.js",
     "seed": "node seeds/seed.js",
+    "create-admin": "node seeds/createAdmin.js",
     "worker": "node src/workers/reminderWorker.js",
     "test": "cross-env NODE_ENV=test jest --runInBand",
     "test:coverage": "cross-env NODE_ENV=test jest --runInBand --coverage"

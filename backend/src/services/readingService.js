@@ -39,6 +39,7 @@ async function create(userId, { reading_date, time_slot, glucose_value, fasting_
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${COLUMNS}`,
         [userId, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes]
       );
+      await client.query('UPDATE users SET report_cache_version = report_cache_version + 1 WHERE id = $1', [userId]);
       return withInterpretation(rows[0]);
     });
   } catch (err) {
@@ -52,7 +53,7 @@ async function getById(userId, id) {
   return withInterpretation(rows[0]);
 }
 
-async function update(userId, id, { reading_date, time_slot, glucose_value, fasting_confirmed = null, meal_timing_minutes = null }) {
+async function update(userId, id, { reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes }) {
   try {
     return await db.withTransaction(async (client) => {
       await lockUser(client, userId);
@@ -61,10 +62,12 @@ async function update(userId, id, { reading_date, time_slot, glucose_value, fast
       await assertSlotAvailable(client, userId, reading_date, time_slot, id);
       const { rows } = await client.query(
         `UPDATE glucose_readings SET reading_date = $3, time_slot = $4, glucose_value = $5,
-          fasting_confirmed = $6, meal_timing_minutes = $7
+          fasting_confirmed = COALESCE($6, fasting_confirmed),
+          meal_timing_minutes = COALESCE($7, meal_timing_minutes)
          WHERE id = $1 AND user_id = $2 RETURNING ${COLUMNS}`,
         [id, userId, reading_date, time_slot, glucose_value, fasting_confirmed, meal_timing_minutes]
       );
+      await client.query('UPDATE users SET report_cache_version = report_cache_version + 1 WHERE id = $1', [userId]);
       return withInterpretation(rows[0]);
     });
   } catch (err) {
@@ -73,8 +76,12 @@ async function update(userId, id, { reading_date, time_slot, glucose_value, fast
 }
 
 async function remove(userId, id) {
-  const { rowCount } = await db.query('DELETE FROM glucose_readings WHERE id = $1 AND user_id = $2', [id, userId]);
-  if (!rowCount) throw new AppError(404, 'Reading not found.');
+  return db.withTransaction(async (client) => {
+    await lockUser(client, userId);
+    const { rowCount } = await client.query('DELETE FROM glucose_readings WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (!rowCount) throw new AppError(404, 'Reading not found.');
+    await client.query('UPDATE users SET report_cache_version = report_cache_version + 1 WHERE id = $1', [userId]);
+  });
 }
 
 const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`);

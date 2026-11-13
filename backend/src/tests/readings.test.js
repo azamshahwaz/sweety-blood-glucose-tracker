@@ -8,12 +8,15 @@ const base = { reading_date: '2025-06-10', time_slot: 'MORNING_FASTING', glucose
 
 describe('Readings API - create & validation', () => {
   test('creates a valid reading', async () => {
-    const { agent } = await createUser();
+    const { agent, user } = await createUser();
     const res = await agent.post('/api/readings').send(base);
     expect(res.status).toBe(201);
     expect(res.body.message).toBe('Reading added successfully');
     expect(res.body.data.reading).toMatchObject(base);
+    expect(res.body.data.reading.interpretation).toMatchObject({ status: 'MODERATE', reading_type: 'Fasting', reference_range: '100–125 mg/dL' });
     expect(res.body.data.reading.user_id).toBeUndefined();
+    const version = await pool.query('SELECT report_cache_version FROM users WHERE id=$1', [user.id]);
+    expect(Number(version.rows[0].report_cache_version)).toBe(1);
   });
 
   test('rejects a missing glucose value', async () => {
@@ -134,14 +137,17 @@ describe('Readings API - read, update, delete', () => {
   });
 
   test('updates a reading and bumps updated_at', async () => {
-    const { agent } = await createUser();
+    const { agent, user } = await createUser();
     const { body } = await agent.post('/api/readings').send(base);
     const id = body.data.reading.id;
     await new Promise((r) => setTimeout(r, 15));
     const res = await agent.put(`/api/readings/${id}`).send({ ...base, glucose_value: 135 });
     expect(res.status).toBe(200);
     expect(res.body.data.reading.glucose_value).toBe(135);
+    expect(res.body.data.reading.interpretation.status).toBe('HIGH');
     expect(new Date(res.body.data.reading.updated_at).getTime()).toBeGreaterThan(new Date(body.data.reading.updated_at).getTime());
+    const version = await pool.query('SELECT report_cache_version FROM users WHERE id=$1', [user.id]);
+    expect(Number(version.rows[0].report_cache_version)).toBe(2);
   });
 
   test('update validates input and prevents duplicate slots', async () => {
@@ -157,13 +163,15 @@ describe('Readings API - read, update, delete', () => {
   });
 
   test('deletes a reading', async () => {
-    const { agent } = await createUser();
+    const { agent, user } = await createUser();
     const { body } = await agent.post('/api/readings').send(base);
     const id = body.data.reading.id;
     const res = await agent.delete(`/api/readings/${id}`);
     expect(res.status).toBe(200);
     await agent.get(`/api/readings/${id}`).expect(404);
     await agent.delete(`/api/readings/${id}`).expect(404);
+    const version = await pool.query('SELECT report_cache_version FROM users WHERE id=$1', [user.id]);
+    expect(Number(version.rows[0].report_cache_version)).toBe(2);
   });
 });
 

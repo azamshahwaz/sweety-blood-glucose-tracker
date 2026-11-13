@@ -23,7 +23,11 @@ const reading = (over = {}) => ({ id: 'r1', reading_date: '2025-06-10', time_slo
 beforeEach(() => {
   vi.clearAllMocks();
   readingsApi.list.mockResolvedValue(listOf([]));
-  readingsApi.interpret.mockResolvedValue({ data: { interpretation: { status: 'TIMING_REQUIRED', label: 'Timing required', color: 'neutral', explanation: 'Confirm timing.', disclaimer: 'General reference values.' } } });
+  readingsApi.interpret.mockResolvedValue({ data: { interpretation: {
+    status: 'NORMAL', label: 'Normal', color: 'green', emoji: '😊', icon: 'CheckCircle',
+    reading_type: 'Fasting', reference_range: '70–99 mg/dL', explanation: 'Within the general range.',
+    disclaimer: 'Educational reference.', range_scale: { min: 40, max: 300, unit: 'mg/dL', segments: [] },
+  } } });
   authApi.me.mockRejectedValue(apiError('no', 401));
 });
 
@@ -86,35 +90,35 @@ describe('ReadingFormModal', () => {
     await userEvent.type(screen.getByLabelText(/glucose value/i), '110');
     await submit();
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(readingsApi.create).toHaveBeenCalledWith({ reading_date: todayLocal(), time_slot: 'AFTER_BREAKFAST', glucose_value: 110, fasting_confirmed: null, meal_timing_minutes: null });
+    expect(await screen.findByRole('status')).toHaveTextContent('Reading saved successfully');
+    expect(screen.getByText('Normal')).toBeInTheDocument();
+    expect(readingsApi.create).toHaveBeenCalledWith({ reading_date: todayLocal(), time_slot: 'AFTER_BREAKFAST', glucose_value: 110 });
     expect(toast.success).toHaveBeenCalledWith('Reading added successfully');
+    expect(onClose).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onClose).toHaveBeenCalled();
   });
 
-  test('shows the backend timing-required interpretation while entering a reading', async () => {
+  test('shows a slot-based interpretation without timing confirmation', async () => {
     setup();
     await userEvent.type(screen.getByLabelText(/glucose value/i), '110');
-    expect(await screen.findByText('Timing required')).toBeInTheDocument();
-    expect(screen.getByText('Confirm timing.')).toBeInTheDocument();
+    expect(await screen.findByText('Normal')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/confirm at least 8 hours/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/minutes after meal started/i)).not.toBeInTheDocument();
     expect(readingsApi.interpret).toHaveBeenCalledWith({
       glucose_value: 110,
       time_slot: 'MORNING_FASTING',
-      fasting_confirmed: false,
-      meal_timing_minutes: null,
     });
   });
 
-  test('submits confirmed fasting context with the reading', async () => {
+  test('submits a reading without obsolete timing fields', async () => {
     readingsApi.create.mockResolvedValue({ data: {} });
     setup();
-    await userEvent.click(screen.getByLabelText(/confirm at least 8 hours/i));
     await userEvent.type(screen.getByLabelText(/glucose value/i), '90');
     await submit();
-    await waitFor(() => expect(readingsApi.create).toHaveBeenCalledWith(expect.objectContaining({
-      glucose_value: 90,
-      fasting_confirmed: true,
-      meal_timing_minutes: null,
-    })));
+    await waitFor(() => expect(readingsApi.create).toHaveBeenCalledWith({
+      reading_date: todayLocal(), time_slot: 'MORNING_FASTING', glucose_value: 90,
+    }));
   });
 
   test('shows a loading state and blocks duplicate submissions', async () => {
@@ -143,15 +147,21 @@ describe('ReadingFormModal', () => {
 
   test('edit mode pre-fills the form and calls update', async () => {
     readingsApi.update.mockResolvedValue({ data: {} });
-    const { onSaved } = setup({ reading: reading() });
+    const { onSaved, onClose } = setup({ reading: reading() });
     expect(screen.getByRole('heading', { name: 'Edit Reading' })).toBeInTheDocument();
     expect(screen.getByLabelText(/glucose value/i)).toHaveValue(128);
-    expect(screen.getByLabelText('Time Slot')).toBeDisabled();
+    expect(screen.getByLabelText('Time Slot')).toBeEnabled();
+    await userEvent.selectOptions(screen.getByLabelText('Time Slot'), 'AFTER_BREAKFAST');
     await userEvent.clear(screen.getByLabelText(/glucose value/i));
     await userEvent.type(screen.getByLabelText(/glucose value/i), '140');
     await userEvent.click(screen.getByRole('button', { name: 'Update' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(readingsApi.update).toHaveBeenCalledWith('r1', { reading_date: '2025-06-10', time_slot: 'AFTER_LUNCH', glucose_value: 140, fasting_confirmed: null, meal_timing_minutes: null });
+    expect(readingsApi.update).toHaveBeenCalledWith('r1', { reading_date: '2025-06-10', time_slot: 'AFTER_BREAKFAST', glucose_value: 140 });
+    expect(readingsApi.interpret).toHaveBeenCalledWith({ glucose_value: 140, time_slot: 'AFTER_BREAKFAST' });
+    expect(await screen.findByRole('status')).toHaveTextContent('Reading saved successfully');
+    expect(screen.getByText('Normal')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onClose).toHaveBeenCalled();
   });
 });
 

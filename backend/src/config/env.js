@@ -46,6 +46,9 @@ module.exports = {
   redisHost: process.env.REDIS_HOST || 'localhost',
   redisPort: Number(process.env.REDIS_PORT) || 6379,
   redisPassword: process.env.REDIS_PASSWORD || '',
+  reportCacheTtlSeconds: Math.max(1, Math.trunc(Number(process.env.REPORT_CACHE_TTL_SECONDS)) || 300),
+  bootstrapAdminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL || '',
+  bootstrapAdminPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD || '',
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
   frontendUrls: (process.env.FRONTEND_URL || 'http://localhost:5177')

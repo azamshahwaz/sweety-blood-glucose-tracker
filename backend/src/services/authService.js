@@ -105,6 +105,7 @@ const safeUser = (u) => ({
   id: u.id,
   name: u.name,
   email: u.email,
+  role: u.role || 'PATIENT',
   created_at: u.created_at
 });
 
@@ -127,7 +128,7 @@ async function register({ name, email, password, confirmPassword }) {
     const { rows } = await db.query(
       `INSERT INTO users (name, email, password_hash)
        VALUES ($1, $2, $3)
-       RETURNING id, name, email, created_at`,
+       RETURNING id, name, email, role, created_at`,
       [validated.name, validated.email, passwordHash]
     );
 
