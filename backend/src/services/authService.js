@@ -1,6 +1,7 @@
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { randomUUID } = require('crypto');
 
 const env = require('../config/env');
 const db = require('../config/db');
@@ -8,120 +9,93 @@ const AppError = require('../utils/AppError');
 
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 4);
 
-// -------------------- VALIDATION HELPERS --------------------
-
 function validateRegistration({ name, email, password, confirmPassword }) {
-
-  // Name validation
   if (!name || typeof name !== 'string' || !name.trim()) {
     throw new AppError(400, 'Name is required.', {
-      name: 'Name is required.'
+      name: 'Name is required.',
     });
   }
 
   const trimmedName = name.trim();
 
-  if (trimmedName.length < 2 || trimmedName.length > 100 ||
-      !/^[A-Za-z]+(?:[ .'-][A-Za-z]+)*$/.test(trimmedName)) {
+  if (
+    trimmedName.length < 2 ||
+    trimmedName.length > 100 ||
+    !/^[A-Za-z]+(?:[ .'-][A-Za-z]+)*$/.test(trimmedName)
+  ) {
     throw new AppError(400, 'Please enter a valid name.', {
-      name: 'Name must contain 4-100 characters and only letters, spaces, hyphens or apostrophes.'
+      name: 'Name must contain 2-100 characters and only letters, spaces, hyphens or apostrophes.',
     });
   }
 
-  // Email validation
-if (!email || typeof email !== 'string') {
-  throw new AppError(400, 'Email is required.', {
-    email: 'Email is required.'
-  });
-}
+  if (!email || typeof email !== 'string') {
+    throw new AppError(400, 'Email is required.', {
+      email: 'Email is required.',
+    });
+  }
 
-const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new AppError(400, 'Please enter a valid email address.', {
+      email: 'Please enter a valid email address.',
+    });
+  }
 
-if (!emailRegex.test(normalizedEmail)) {
-  throw new AppError(400, 'Please enter a valid email address.', {
-    email: 'Please enter a valid email address.'
-  });
-}
-
-  // Password validation
   if (!password || typeof password !== 'string') {
     throw new AppError(400, 'Password is required.', {
-      password: 'Password is required.'
+      password: 'Password is required.',
     });
   }
 
   const passwordErrors = [];
 
-  if (password.length < 8) {
-    passwordErrors.push('Password must be at least 8 characters long.');
-  }
+  if (password.length < 8) passwordErrors.push('Password must be at least 8 characters long.');
+  if (!/[A-Z]/.test(password)) passwordErrors.push('Password must contain at least one uppercase letter.');
+  if (!/[a-z]/.test(password)) passwordErrors.push('Password must contain at least one lowercase letter.');
+  if (!/[0-9]/.test(password)) passwordErrors.push('Password must contain at least one number.');
+  if (!/[^A-Za-z0-9]/.test(password)) passwordErrors.push('Password must contain at least one special character.');
 
-  if (!/[A-Z]/.test(password)) {
-    passwordErrors.push('Password must contain at least one uppercase letter.');
-  }
-
-  if (!/[a-z]/.test(password)) {
-    passwordErrors.push('Password must contain at least one lowercase letter.');
-  }
-
-  if (!/[0-9]/.test(password)) {
-    passwordErrors.push('Password must contain at least one number.');
-  }
-
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    passwordErrors.push('Password must contain at least one special character.');
-  }
-
-  if (passwordErrors.length > 0) {
+  if (passwordErrors.length) {
     throw new AppError(400, 'Password does not meet the requirements.', {
-      password: passwordErrors.join(' ')
+      password: passwordErrors.join(' '),
     });
   }
 
-  // Confirm password validation
   if (!confirmPassword || typeof confirmPassword !== 'string') {
     throw new AppError(400, 'Please confirm your password.', {
-      confirmPassword: 'Confirm password is required.'
+      confirmPassword: 'Confirm password is required.',
     });
   }
 
   if (password !== confirmPassword) {
     throw new AppError(400, 'Passwords do not match.', {
-      confirmPassword: 'Passwords do not match. Please enter the same password.'
+      confirmPassword: 'Passwords do not match.',
     });
   }
 
   return {
     name: trimmedName,
-    email: normalizedEmail
+    email: normalizedEmail,
   };
 }
-
-// -------------------- SAFE USER --------------------
 
 const safeUser = (u) => ({
   id: u.id,
   name: u.name,
   email: u.email,
   role: u.role || 'PATIENT',
-  created_at: u.created_at
+  created_at: u.created_at,
 });
 
-// -------------------- REGISTER --------------------
-
 async function register({ name, email, password, confirmPassword }) {
-
-  // Validate all registration fields
   const validated = validateRegistration({
     name,
     email,
     password,
-    confirmPassword
+    confirmPassword,
   });
 
-  // Hash password
   const passwordHash = await bcrypt.hash(password, env.bcryptRounds);
 
   try {
@@ -133,36 +107,27 @@ async function register({ name, email, password, confirmPassword }) {
     );
 
     return safeUser(rows[0]);
-
   } catch (err) {
-
     if (err.code === '23505') {
-      throw new AppError(
-        409,
-        'An account with this email already exists.',
-        {
-          email: 'An account with this email already exists.'
-        }
-      );
+      throw new AppError(409, 'An account with this email already exists.', {
+        email: 'An account with this email already exists.',
+      });
     }
 
     throw err;
   }
 }
 
-// -------------------- LOGIN --------------------
-
 async function login({ email, password }) {
-
   if (!email || typeof email !== 'string') {
     throw new AppError(400, 'Email is required.', {
-      email: 'Email is required.'
+      email: 'Email is required.',
     });
   }
 
   if (!password || typeof password !== 'string') {
     throw new AppError(400, 'Password is required.', {
-      password: 'Password is required.'
+      password: 'Password is required.',
     });
   }
 
@@ -175,8 +140,6 @@ async function login({ email, password }) {
 
   const user = rows[0];
 
-  // Dummy comparison prevents an obvious timing difference
-  // when an account does not exist.
   const ok = await bcrypt.compare(
     password,
     user ? user.password_hash : DUMMY_HASH
@@ -186,25 +149,58 @@ async function login({ email, password }) {
     throw new AppError(401, 'Invalid email or password.');
   }
 
+  // Every tab receives its own independent server-side session ID.
+  const sessionId = randomUUID();
+
   const token = jwt.sign(
-    { sub: user.id },
+    {
+      sub: user.id,
+      sid: sessionId,
+    },
     env.jwtSecret,
     {
       expiresIn: env.jwtExpiresIn,
-      algorithm: 'HS256'
+      algorithm: 'HS256',
     }
   );
 
-  const { exp } = jwt.decode(token);
+  const decoded = jwt.decode(token);
+
+  if (!decoded?.exp) {
+    throw new AppError(500, 'Could not create an authentication session.');
+  }
+
+  const expiresAt = new Date(decoded.exp * 1000);
+  const maxAgeMs = Math.max(0, expiresAt.getTime() - Date.now());
+
+  await db.query(
+    `INSERT INTO tab_sessions (id, user_id, expires_at)
+     VALUES ($1, $2, $3)`,
+    [sessionId, user.id, expiresAt]
+  );
 
   return {
     user: safeUser(user),
     token,
-    maxAgeMs: exp * 1000 - Date.now()
+    maxAgeMs,
   };
+}
+
+async function logout(sessionId, userId) {
+  if (!sessionId || !userId) return;
+
+  await db.query(
+    `UPDATE tab_sessions
+     SET revoked_at = NOW()
+     WHERE id = $1
+       AND user_id = $2
+       AND revoked_at IS NULL`,
+    [sessionId, userId]
+  );
 }
 
 module.exports = {
   register,
-  login
+  login,
+  logout,
 };

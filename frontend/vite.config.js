@@ -1,15 +1,33 @@
+
 /// <reference types="vitest" />
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5177 },
+
+  server: {
+    port: 5177,
+
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
+  },
+
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/tests/setup.js',
     css: false,
-    coverage: { provider: 'v8', include: ['src/**/*.{js,jsx}'], exclude: ['src/tests/**', 'src/main.jsx'] },
+
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/tests/**', 'src/main.jsx'],
+    },
   },
 });
