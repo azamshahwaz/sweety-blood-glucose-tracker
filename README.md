@@ -24,6 +24,7 @@ Sweety is a tracking and education tool. Glucose interpretations are general ref
 - [Environment Variables](#environment-variables)
 - [Prerequisites](#prerequisites)
 - [Installation and Setup](#installation-and-setup)
+- [Demo Login Credentials](#demo-login-credentials)
 - [Docker Compose](#docker-compose)
 - [API Documentation](#api-documentation)
 - [Available npm Scripts](#available-npm-scripts)
@@ -212,7 +213,7 @@ Reports include the highest, lowest, average (rounded to one decimal place), and
 
 ## Redis Caching and BullMQ Background Jobs
 
-The BullMQ scheduler runs daily at 8:00 PM Asia/Kolkata. The worker counts readings for that date and inserts a `reminder_logs` record for each user with fewer than four readings. A unique user/date constraint and conflict-safe insert prevent duplicate records. Failed jobs are retried with exponential backoff. These rows are audit logs only; no notification is delivered.
+BullMQ with Redis has been implemented for scheduled reminder jobs. Its functionality is not fully tested and requires further verification. The scheduler runs daily at 8:00 PM Asia/Kolkata. The worker counts readings for that date and inserts a `reminder_logs` record for each user with fewer than four readings. A unique user/date constraint and conflict-safe insert prevent duplicate records. Failed jobs are retried with exponential backoff. These rows are audit logs only; no notification is delivered.
 
 Redis caches patient report responses for `REPORT_CACHE_TTL_SECONDS` (300 seconds by default). Reading writes bump a per-user cache version. Redis is an optimization: the API falls back to PostgreSQL when the cache is unavailable. The worker requires Redis; report reads and writes remain available without it.
 
@@ -350,6 +351,20 @@ npm run seed
 ```
 
 The seed command runs migrations and idempotently creates development demo patient/doctor records, an assignment, and sample patient readings. It is for local evaluation only; its demo credentials are defined in `backend/seeds/seed.js` and must not be treated as production credentials.
+
+## Demo Login Credentials
+
+Seed the demo records with `npm run seed` from the `backend` directory, then use these credentials to sign in:
+
+| Role | Login email | Password |
+|---|---|---|
+| Admin | `admin@sweety.app` | `AzamAdmin@1926` |
+| Doctor | `nisha.doctor@sweety.app` | `NishaDoctor@19` |
+| Patient | `demo@sweety.app` | `SweetyDemo@123` |
+
+These are local development demo credentials from `backend/seeds/seed.js`.
+
+---
 
 ### 5. Start the backend and frontend
 
