@@ -54,7 +54,7 @@ app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/doctor', require('./routes/doctorRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
-
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use(notFound);
 app.use(errorHandler);
 

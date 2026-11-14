@@ -42,3 +42,13 @@ export const adminApi = {
   assign: (doctorId, patientId) => unwrap(client.post('/admin/assignments', { doctorId, patientId })),
   removeAssignment: (id) => unwrap(client.delete(`/admin/assignments/${id}`)),
 };
+
+export const notificationsApi = {
+  list: () => unwrap(client.get('/notifications')),
+
+  markRead: (id) =>
+    unwrap(client.patch(`/notifications/${id}/read`)),
+
+  markAllRead: () =>
+    unwrap(client.patch('/notifications/read-all')),
+};
